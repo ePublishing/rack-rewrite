@@ -167,6 +167,8 @@ module Rack
             string =~ matcher
           elsif matcher.is_a?(String)
             string == matcher
+          elsif matcher.is_a?(Symbol)
+            string.downcase == matcher.to_s.downcase
           else
             false
           end
