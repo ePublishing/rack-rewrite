@@ -376,3 +376,31 @@ class RuleTest < Test::Unit::TestCase
     {'PATH_INFO' => components[0], 'QUERY_STRING' => components[1] || ''}.merge(options)
   end
 end
+
+class RuleSetTest < Test::Unit::TestCase
+
+  should '#RuleSet#find_first_matching_rule' do
+    set = Rack::Rewrite::RuleSet.new
+    set.instance_eval do
+      r301 %r{^/a/b/c\.jpg$}, '/a/b/c.gif'
+      rule_set %r{^/1/} do
+        rule_set %r{^/1/2/} do
+          r301 %r{^/1/2/3.jpg}, '/1/2/3.gif'
+          r301 %r{^/1/2/4.jpg}, '/1/2/4.gif'
+          rule_set %r{^/1/2/x/} do
+            r301 %r{^/1/2/x/y.jpg}, '/1/2/x/y.gif'
+          end
+        end
+        r301 %r{^/1/20/30.jpg}, '/1/20/30.gif'
+      end
+      rule_set %r{^/10/} do
+        r301 %r{^/10/20/30.jpg}, '/10/20/30.gif'
+      end
+    end
+
+    assert_equal set.find_first_matching_rule('PATH_INFO' => '/1/2/x/y.jpg').to, '/1/2/x/y.gif'
+    assert_equal set.find_first_matching_rule('PATH_INFO' => '/1/20/30.jpg').to, '/1/20/30.gif'
+    assert_nil set.find_first_matching_rule('PATH_INFO' => '/1/dne.jpg')
+  end
+
+end

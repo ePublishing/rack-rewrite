@@ -3,9 +3,23 @@ require 'rack/mime'
 module Rack
   class Rewrite
     class RuleSet
-      attr_reader :rules
-      def initialize #:nodoc:
+      attr_reader :scope_rule, :rules
+      def initialize(scope_rule=nil) #:nodoc:
+        @scope_rule = scope_rule
         @rules = []
+      end
+
+      # Recursively finds the first matching rule inside of this ruleset,
+      # traversing through descendant rule sets if applicable
+      def find_first_matching_rule(rack_env)
+        rules.detect do |rule|
+          matches = rule.matches?(rack_env)
+          if matches and rule.is_a? RuleSet and first_child = rule.find_first_matching_rule(rack_env)
+            return first_child
+          elsif rule.is_a? Rule
+            matches
+          end
+        end
       end
 
       protected
@@ -54,6 +68,17 @@ module Rack
         #    :if => Proc.new { File.exists?('public/system/maintenance.html') }
         def x_send_file(*args)
           add_rule :x_send_file, *args
+        end
+
+        def matches?(rack_env)
+          scope_rule and scope_rule.matches?(rack_env)
+        end
+
+        # Adds a set of child rules all within a given scope.  Scope should be a regular expression that
+        # will match against the incoming path.
+        def rule_set(from, &block)
+          scope_rule = Rule.new(nil, from, nil)
+          @rules << RuleSet.new(scope_rule).tap { |set| set.instance_eval(&block) }
         end
         
       private

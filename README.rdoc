@@ -154,6 +154,21 @@ to be rendered instead of passing the application call up the rack stack.
     File.exists?('public/blog_offline.htm')
   }
 
+=== :rule_set
+
+In the case that a large number of rewrite rules exist that all share a common
+root, a performance advantage can be achieved by grouping these rules into a
+rule set so that only one regular expression is performed in a failing case rather
+than hundreds or thousands.  Rule sets can be chained in infinite levels.
+
+  rule_set %r{^/wiki/} do
+    r301 '/wiki/a', '/new-wiki/cool'
+    r301 '/wiki/b', '/new-wiki/not-cool'
+    rule_set %r{^/wiki/songs/mp3/} do
+      r301 '/wiki/songs/mp3/bob_doe.mp3', '/new-wiki/bob.mp3'
+    end
+  end
+
 == Options Parameter
 
 Each rewrite rule takes an optional options parameter.  The following options

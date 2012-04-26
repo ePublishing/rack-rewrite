@@ -22,7 +22,7 @@ module Rack
         
     private
       def find_first_matching_rule(env) #:nodoc:
-        @rule_set.rules.detect { |rule| rule.matches?(env) }
+        @rule_set.find_first_matching_rule(env)
       end    
   end
 end

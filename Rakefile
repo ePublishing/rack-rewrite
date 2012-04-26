@@ -37,3 +37,6 @@ Rake::RDocTask.new do |rdoc|
   rdoc.rdoc_files.include('History.rdoc')
   rdoc.rdoc_files.include('lib/**/*.rb')
 end
+
+require 'bundler'
+Bundler::GemHelper.install_tasks
