@@ -1,4 +1,5 @@
 require 'rack/mime'
+require 'uri'
 
 module Rack
   class Rewrite
@@ -105,7 +106,7 @@ module Rack
       # Either (a) return a Rack response (short-circuiting the Rack stack), or
       # (b) alter env as necessary and return true
       def apply!(env) #:nodoc:
-        interpreted_to = self.interpret_to(env)
+        interpreted_to = URI.escape self.interpret_to(env)
         additional_headers = @options[:headers] || {}
         status = @options[:status] || 200
         case self.rule_type
@@ -213,7 +214,7 @@ module Rack
         def build_path_from_env(env)
           path = env['PATH_INFO']
           path += "?#{env['QUERY_STRING']}" unless env['QUERY_STRING'].nil? || env['QUERY_STRING'].empty?
-          path
+          URI.unescape path
         end
 
         def redirect_message(location)
