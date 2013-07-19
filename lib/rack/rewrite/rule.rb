@@ -42,17 +42,51 @@ module Rack
         #
         #  r301 '/wiki/John_Trupiano', '/john'
         #  r301 '/contact-us.php', '/contact-us'
+        #
+        # You can use +moved_permanently+ or just +p+ instead of +r301+.
         def r301(*args)
           add_rule :r301, *args
         end
+
+        alias :moved_permanently :r301
+        alias :p :r301
 
         # Creates a redirect rule that will send a 302 when matching.
         #
         #  r302 '/wiki/John_Trupiano', '/john'
         #  r302 '/wiki/(.*)', 'http://www.google.com/?q=$1'
+        #
+        # You can use +found+ instead of +r302+.
         def r302(*args)
           add_rule :r302, *args
         end
+
+        alias :found :r302
+
+        # Creates a redirect rule that will send a 303 when matching.
+        #
+        #  r303 '/wiki/John_Trupiano', '/john'
+        #  r303 '/wiki/(.*)', 'http://www.google.com/?q=$1'
+        #
+        # You can use +see_other+ instead of +r303+.
+        def r303(*args)
+          add_rule :r303, *args
+        end
+
+        alias :see_other :r303
+
+        # Creates a redirect rule that will send a 307 when matching.
+        #
+        #  r307 '/wiki/John_Trupiano', '/john'
+        #  r307 '/wiki/(.*)', 'http://www.google.com/?q=$1'
+        #
+        # You can use +temporary_redirect+ or +t+ instead of +r307+.
+        def r307(*args)
+          add_rule :r307, *args
+        end
+
+        alias :temporary_redirect :r307
+        alias :t :r307
 
         # Creates a rule that will render a file if matched.
         #
@@ -81,7 +115,7 @@ module Rack
           scope_rule = Rule.new(nil, from, nil)
           @rules << RuleSet.new(scope_rule).tap { |set| set.instance_eval(&block) }
         end
-        
+
       private
         def add_rule(method, from, to, options = {}) #:nodoc:
           @rules << Rule.new(method.to_sym, from, to, options)
@@ -106,14 +140,25 @@ module Rack
       # Either (a) return a Rack response (short-circuiting the Rack stack), or
       # (b) alter env as necessary and return true
       def apply!(env) #:nodoc:
-        interpreted_to = URI.escape self.interpret_to(env)
-        additional_headers = @options[:headers] || {}
+        interpreted_to = self.interpret_to(env)
+        additional_headers = {}
+        if @options[:headers]
+          if @options[:headers].respond_to?(:call)
+            additional_headers = @options[:headers].call || {}
+          else
+            additional_headers = @options[:headers] || {}
+          end
+        end
         status = @options[:status] || 200
         case self.rule_type
         when :r301
           [301, {'Location' => interpreted_to, 'Content-Type' => Rack::Mime.mime_type(::File.extname(interpreted_to))}.merge!(additional_headers), [redirect_message(interpreted_to)]]
         when :r302
           [302, {'Location' => interpreted_to, 'Content-Type' => Rack::Mime.mime_type(::File.extname(interpreted_to))}.merge!(additional_headers), [redirect_message(interpreted_to)]]
+        when :r303
+          [303, {'Location' => interpreted_to, 'Content-Type' => Rack::Mime.mime_type(::File.extname(interpreted_to))}.merge!(additional_headers), [redirect_message(interpreted_to)]]
+        when :r307
+          [307, {'Location' => interpreted_to, 'Content-Type' => Rack::Mime.mime_type(::File.extname(interpreted_to))}.merge!(additional_headers), [redirect_message(interpreted_to)]]
         when :rewrite
           # return [200, {}, {:content => env.inspect}]
           env['REQUEST_URI'] = interpreted_to
@@ -132,10 +177,10 @@ module Rack
             }.merge!(additional_headers), [::File.read(interpreted_to)]]
         when :x_send_file
           [status, {
-            'X-Sendfile'       => interpreted_to,
+            'X-Sendfile'     => interpreted_to,
             'X-Accel-Redirect' => interpreted_to,
-            'Content-Length'   => ::File.size(interpreted_to).to_s,
-            'Content-Type'     => Rack::Mime.mime_type(::File.extname(interpreted_to))
+            'Content-Length' => ::File.size(interpreted_to).to_s,
+            'Content-Type'   => Rack::Mime.mime_type(::File.extname(interpreted_to))
             }.merge!(additional_headers), []]
         else
           raise Exception.new("Unsupported rule: #{self.rule_type}")
@@ -164,6 +209,7 @@ module Rack
           # possitive matches
           matches << string_matches?(env['REQUEST_METHOD'], options[:method]) if options[:method]
           matches << string_matches?(request.host, options[:host]) if options[:host]
+          matches << string_matches?(request.scheme, options[:scheme]) if options[:scheme]
 
           matches.all?
         end
@@ -212,7 +258,7 @@ module Rack
 
         # Construct the URL (without domain) from PATH_INFO and QUERY_STRING
         def build_path_from_env(env)
-          path = env['PATH_INFO']
+          path = env['PATH_INFO'] || ''
           path += "?#{env['QUERY_STRING']}" unless env['QUERY_STRING'].nil? || env['QUERY_STRING'].empty?
           URI.unescape path
         end

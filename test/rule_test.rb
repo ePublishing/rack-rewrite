@@ -34,16 +34,20 @@ class RuleTest < Test::Unit::TestCase
   end
   
   context '#Rule#apply' do
-    should 'set Location header to result of #interpret_to for a 301' do
-      rule = Rack::Rewrite::Rule.new(:r301, %r{/abc}, '/def')
-      env = {'PATH_INFO' => '/abc'}
-      assert_equal rule.send(:interpret_to, '/abc'), rule.apply!(env)[1]['Location']
+    supported_status_codes.each do |rule_type|
+      should "set Location header to result of #interpret_to for a #{rule_type}" do
+        rule = Rack::Rewrite::Rule.new(rule_type, %r{/abc}, '/def')
+        env = {'PATH_INFO' => '/abc'}
+        assert_equal rule.send(:interpret_to, '/abc'), rule.apply!(env)[1]['Location']
+      end
     end
     
-    should 'include a link to the result of #interpret_to for a 301' do
-      rule = Rack::Rewrite::Rule.new(:r301, %r{/abc}, '/def')
-      env = {'PATH_INFO' => '/abc'}
-      assert_match /\/def/, rule.apply!(env)[2][0]
+    supported_status_codes.each do |rule_type|
+      should "include a link to the result of #interpret_to for a #{rule_type}" do
+        rule = Rack::Rewrite::Rule.new(rule_type, %r{/abc}, '/def')
+        env = {'PATH_INFO' => '/abc'}
+        assert_match /\/def/, rule.apply!(env)[2][0]
+      end
     end
     
     should 'keep the QUERY_STRING when a 301 rule matches a URL with a querystring' do
@@ -71,7 +75,7 @@ class RuleTest < Test::Unit::TestCase
     end
 
     should 'set Content-Type header to text/html for a 301 and 302 request for a .html page' do
-      [:r301, :r302].each do |rule_type|
+      supported_status_codes.each do |rule_type|
         rule = Rack::Rewrite::Rule.new(rule_type, %r{/abc}, '/def.html')
         env = {'PATH_INFO' => '/abc'}
         assert_equal 'text/html', rule.apply!(env)[1]['Content-Type']
@@ -79,7 +83,7 @@ class RuleTest < Test::Unit::TestCase
     end
     
     should 'set Content-Type header to text/css for a 301 and 302 request for a .css page' do
-      [:r301, :r302].each do |rule_type|
+      supported_status_codes.each do |rule_type|
         rule = Rack::Rewrite::Rule.new(rule_type, %r{/abc}, '/def.css')
         env = {'PATH_INFO' => '/abc'}
         assert_equal 'text/css', rule.apply!(env)[1]['Content-Type']
@@ -92,6 +96,28 @@ class RuleTest < Test::Unit::TestCase
         env = {'PATH_INFO' => '/abc'}
         assert_equal 'no-cache', rule.apply!(env)[1]['Cache-Control']
       end      
+    end
+
+    should 'evaluate additional headers block once per redirect request' do
+      [:r301, :r302].each do |rule_type|
+        header_val = 'foo'
+        rule = Rack::Rewrite::Rule.new(rule_type, %r{/abc}, '/def.css', {:headers => lambda { {'X-Foobar' => header_val} } })
+        env = {'PATH_INFO' => '/abc'}
+        assert_equal 'foo', rule.apply!(env)[1]['X-Foobar']
+        header_val = 'bar'
+        assert_equal 'bar', rule.apply!(env)[1]['X-Foobar']
+      end
+    end
+
+    should 'evaluate additional headers block once per send file request' do
+      [:send_file, :x_send_file].each do |rule_type|
+        header_val = 'foo'
+        rule = Rack::Rewrite::Rule.new(rule_type, /.*/, File.join(TEST_ROOT, 'geminstaller.yml'), {:headers => lambda { {'X-Foobar' => header_val} } })
+        env = {'PATH_INFO' => '/abc'}
+        assert_equal 'foo', rule.apply!(env)[1]['X-Foobar']
+        header_val = 'bar'
+        assert_equal 'bar', rule.apply!(env)[1]['X-Foobar']
+      end
     end
     
     context 'Given an :x_send_file rule that matches' do
@@ -121,7 +147,7 @@ class RuleTest < Test::Unit::TestCase
       should 'return additional headers' do
         assert_equal 'no-cache', @response[1]['Cache-Control']
       end
-      
+
       should 'return empty content' do
         assert_equal [], @response[2]
       end
@@ -238,9 +264,17 @@ class RuleTest < Test::Unit::TestCase
       end
     end
     
-    should 'match with the ^ operator for regexps' do
-      rule = Rack::Rewrite::Rule.new(:rewrite, %r{^/jason}, '/steve')
-      assert rule.matches?(rack_env_for('/jason'))
+    context 'Given a rule with the ^ operator' do
+      setup do
+        @rule = Rack::Rewrite::Rule.new(:rewrite, %r{^/jason}, '/steve')
+      end
+      should 'match with the ^ operator if match is at the beginning of the path' do
+        assert @rule.matches?(rack_env_for('/jason'))
+      end
+    
+      should 'not match with the ^ operator when match is deeply nested' do
+        assert !@rule.matches?(rack_env_for('/foo/bar/jason'))
+      end
     end
         
     context 'Given any rule with a "from" regular expression of /features(.*)' do
@@ -378,6 +412,13 @@ class RuleTest < Test::Unit::TestCase
     should 'call to with from match data' do
       rule = Rack::Rewrite::Rule.new(:rewrite, %r{/person_(\d+)(.*)}, lambda {|match, env| "people-#{match[1].to_i * 3}#{match[2]}"})
       assert_equal 'people-3?show_bio=1', rule.send(:interpret_to, rack_env_for('/person_1?show_bio=1'))
+    end
+  end
+  
+  context 'Mongel 1.2.0.pre2 edge case: root url with a query string' do
+    should 'handle a nil PATH_INFO variable without errors' do
+      rule = Rack::Rewrite::Rule.new(:r301, '/a', '/')
+      assert_equal '?exists', rule.send(:build_path_from_env, {'QUERY_STRING' => 'exists'})
     end
   end
   
